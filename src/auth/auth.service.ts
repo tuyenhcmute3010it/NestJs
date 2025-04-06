@@ -1,19 +1,21 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { UsersService } from 'src/users/users.service';
 import { JwtService } from '@nestjs/jwt';
-import { CreateUserDto, RegisterUserDto } from 'src/users/dto/create-user.dto';
-import { genSaltSync, hashSync } from 'bcryptjs';
-import { UsersModule } from 'src/users/users.module';
+import { RegisterUserDto } from 'src/users/dto/create-user.dto';
 import { User, UserDocument } from 'src/users/schemas/user.schema';
 import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
 import { InjectModel } from '@nestjs/mongoose';
 import { IUser } from 'src/users/users.interface';
+import { ConfigService } from '@nestjs/config';
+import ms from 'ms';
+import { response, Response } from 'express';
 
 @Injectable()
 export class AuthService {
   constructor(
     private usersService: UsersService,
     private jwtService: JwtService,
+    private configService: ConfigService,
     @InjectModel(User.name) private userModel: SoftDeleteModel<UserDocument>,
   ) {}
   // username / pass la 2 tham so thu vien passport no nem ve
@@ -30,7 +32,7 @@ export class AuthService {
     }
     return null;
   }
-  async login(user: IUser) {
+  async login(user: IUser, response: Response) {
     const { _id, name, email, role } = user;
     const payload = {
       sub: 'token login',
@@ -40,34 +42,95 @@ export class AuthService {
       email,
       role,
     };
+    const refreshToken = this.createRefreshToken(payload);
+    // update user with refresh token
+    await this.usersService.updateUserToken(refreshToken, _id);
+
+    // set refresh_token as cookies
+    response.cookie('refresh_token', refreshToken, {
+      httpOnly: true,
+      maxAge: ms(this.configService.get<string>('JWT_REFRESH_EXPIRE')) / 1000,
+    });
     return {
       access_token: this.jwtService.sign(payload),
-      _id,
-      name,
-      email,
-      role,
+      refreshToken,
+      user: {
+        _id,
+        name,
+        email,
+        role,
+      },
     };
   }
 
-  getHashPassword = (password: string) => {
-    const salt = genSaltSync(10);
-    const hash = hashSync(password, salt);
-    return hash;
-  };
-  async register(registerUserDto: CreateUserDto) {
-    const hashPassword = this.getHashPassword(registerUserDto.password);
-    let user = await this.userModel.create({
-      email: registerUserDto.email,
-      password: hashPassword,
-      name: registerUserDto.name,
-      age: registerUserDto.age,
-      gender: registerUserDto.gender,
-      address: registerUserDto.address,
-      role: 'USER',
-    });
+  async register(registerUser: RegisterUserDto) {
+    let user = await this.usersService.register(registerUser);
     return {
-      _id: user._id,
-      createdAt: user.createdAt,
+      _id: user?._id,
+      createdAt: user?.createdAt,
     };
   }
+
+  createRefreshToken = (payload) => {
+    const refreshToken = this.jwtService.sign(payload, {
+      secret: this.configService.get<string>('JWT_REFRESH_TOKEN_SECRET'),
+      expiresIn:
+        ms(this.configService.get<string>('JWT_REFRESH_EXPIRE')) / 1000,
+    });
+    return refreshToken;
+  };
+  processNewToken = async (refreshToken: string, response: Response) => {
+    try {
+      this.jwtService.verify(refreshToken, {
+        secret: this.configService.get<string>('JWT_REFRESH_TOKEN_SECRET'),
+      });
+      let user = await this.usersService.findUserByToken(refreshToken);
+
+      if (user) {
+        // update refresh_token
+        const { _id, name, email, role } = user;
+        const payload = {
+          sub: 'token refresh',
+          iss: 'form server',
+          _id,
+          name,
+          email,
+          role,
+        };
+        const refreshToken = this.createRefreshToken(payload);
+        // update user with refresh token
+        await this.usersService.updateUserToken(refreshToken, _id.toString());
+
+        // set refresh_token as cookies
+        response.clearCookie('refresh_token');
+        response.cookie('refresh_token', refreshToken, {
+          httpOnly: true,
+          maxAge:
+            ms(this.configService.get<string>('JWT_REFRESH_EXPIRE')) / 1000,
+        });
+        return {
+          access_token: this.jwtService.sign(payload),
+          refreshToken,
+          user: {
+            _id,
+            name,
+            email,
+            role,
+          },
+        };
+      } else {
+        throw new BadRequestException(
+          'Refresh token invalid , Pls Login again',
+        );
+      }
+      console.log(user);
+    } catch (error) {
+      throw new BadRequestException('Refresh token invalid , Pls Login again');
+    }
+  };
+  logout = async (response: Response, user: IUser) => {
+    await this.usersService.updateUserToken('', user._id);
+    response.clearCookie('refresh_token');
+    return 'ok';
+  };
 }

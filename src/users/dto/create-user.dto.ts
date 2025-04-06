@@ -52,6 +52,17 @@ export class CreateUserDto {
     message: 'Address Khong duoc de trong',
   })
   address: number;
+
+  @IsNotEmpty({
+    message: 'role Khong duoc de trong',
+  })
+  role: string;
+
+  @IsNotEmptyObject()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => Company)
+  company: Company;
 }
 export class RegisterUserDto {
   @IsNotEmpty({ message: 'Name Khong duoc de trong' })
@@ -87,15 +98,4 @@ export class RegisterUserDto {
     message: 'Address Khong duoc de trong',
   })
   address: string;
-
-  @IsNotEmpty({
-    message: 'role Khong duoc de trong',
-  })
-  role: string;
-
-  @IsNotEmptyObject()
-  @IsObject()
-  @ValidateNested()
-  @Type(() => Company)
-  company: Company;
 }

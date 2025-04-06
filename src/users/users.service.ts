@@ -1,5 +1,5 @@
-import { Injectable } from '@nestjs/common';
-import { CreateUserDto } from './dto/create-user.dto';
+import { BadRequestException, Injectable } from '@nestjs/common';
+import { CreateUserDto, RegisterUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { InjectModel } from '@nestjs/mongoose';
 import mongoose, { Model } from 'mongoose';
@@ -14,15 +14,19 @@ export class UsersService {
   constructor(
     @InjectModel(User.name) private userModel: SoftDeleteModel<UserDocument>,
   ) {}
-  async register(registerUserDto: CreateUserDto) {
+  async register(registerUserDto: RegisterUserDto) {
+    const isExist = await this.userModel.findOne({
+      email: registerUserDto.email,
+    });
+    if (isExist) {
+      throw new BadRequestException(
+        `Email ${registerUserDto.email} is already exits in system , Pls use another email`,
+      );
+    }
     const hashPassword = this.getHashPassword(registerUserDto.password);
     let user = await this.userModel.create({
-      email: registerUserDto.email,
+      ...registerUserDto,
       password: hashPassword,
-      name: registerUserDto.name,
-      age: registerUserDto.age,
-      gender: registerUserDto.gender,
-      address: registerUserDto.address,
       role: 'USER',
     });
     return {
@@ -36,6 +40,14 @@ export class UsersService {
     return hash;
   };
   async create(createUserDto: CreateUserDto, userCreated: IUser) {
+    const isExist = await this.userModel.findOne({
+      email: createUserDto.email,
+    });
+    if (isExist) {
+      throw new BadRequestException(
+        `Email ${createUserDto.email} is already exits in system , Pls use another email`,
+      );
+    }
     const hashPassword = this.getHashPassword(createUserDto.password);
     let user = await this.userModel.create({
       ...createUserDto,
@@ -52,8 +64,8 @@ export class UsersService {
   }
   async findAll(currentPage: number, limit: number, qs: string) {
     const { filter, sort, projection, population } = aqp(qs);
-    delete filter.page;
-    delete filter.limit;
+    delete filter.current;
+    delete filter.pageSize;
     let offset = (+currentPage - 1) * +limit;
     let defaultLimit = +limit ? +limit : 10;
     const totalItems = (await this.userModel.find(filter)).length;
@@ -83,11 +95,6 @@ export class UsersService {
 
     // Exclude the password field using `.select()`
     const user = await this.userModel.findOne({ _id: id }).select('-password');
-
-    if (!user) {
-      return 'Not Found User';
-    }
-
     return user;
   }
 
@@ -107,11 +114,11 @@ export class UsersService {
         _id: updateUserDto._id,
       },
       {
+        ...updateUserDto,
         updatedBy: {
           _id: user._id,
           email: user.email,
         },
-        ...updateUserDto,
       },
     );
   }
@@ -134,4 +141,18 @@ export class UsersService {
       _id: id,
     });
   }
+
+  updateUserToken = async (refreshToken: string, _id: string) => {
+    return await this.userModel.updateOne(
+      {
+        _id,
+      },
+      {
+        refreshToken,
+      },
+    );
+  };
+  findUserByToken = async (refreshToken: string) => {
+    return await this.userModel.findOne({ refreshToken });
+  };
 }
