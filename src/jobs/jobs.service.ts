@@ -4,8 +4,8 @@ import { UpdateJobDto } from './dto/update-job.dto';
 import { IUser } from 'src/users/users.interface';
 import { InjectModel } from '@nestjs/mongoose';
 import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
-import { Job, JobDocument } from './schemas/job.shema';
 import aqp from 'api-query-params';
+import { Job, JobDocument } from './schemas/job.schema';
 
 @Injectable()
 export class JobsService {
