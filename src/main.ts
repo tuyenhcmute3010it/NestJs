@@ -8,6 +8,8 @@ import { AuthGuard } from '@nestjs/passport';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { TransformInterceptor } from './core/transform.interceptor';
 import cookieParser = require('cookie-parser');
+import helmet from 'helmet';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const configService = app.get(ConfigService);
@@ -20,7 +22,11 @@ async function bootstrap() {
   app.setViewEngine('ejs');
 
   app.useGlobalInterceptors(new TransformInterceptor(reflector));
-  app.useGlobalPipes(new ValidationPipe({}));
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true, // fix ko truyen het du lieu bi mat data
+    }),
+  );
 
   // config cookies
   app.use(cookieParser());
@@ -38,7 +44,33 @@ async function bootstrap() {
     type: VersioningType.URI,
     defaultVersion: ['1', '2'], // v1 , v2
   });
+  // User helmet , bao ve header
+  app.use(helmet());
+  // swagger config
 
+  const config = new DocumentBuilder()
+    .setTitle('Nest APIs')
+    .setDescription('All Model Api')
+    .setVersion('1.0')
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'Bearer',
+        bearerFormat: 'JWT',
+        in: 'header',
+      },
+      'token',
+    )
+    .addSecurityRequirements('token')
+    .build();
+  const documentFactory = () => SwaggerModule.createDocument(app, config);
+
+  SwaggerModule.setup('swagger', app, documentFactory, {
+    swaggerOptions: {
+      persistAuthorization: true,
+    },
+  });
+  ///////////
   await app.listen(configService.get('PORT'));
 }
 bootstrap();

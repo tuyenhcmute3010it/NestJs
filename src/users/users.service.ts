@@ -9,11 +9,15 @@ import { SoftDeleteModel } from 'soft-delete-plugin-mongoose';
 import { IUser } from './users.interface';
 import { ShowUserDto } from './dto/show-user.dto';
 import aqp from 'api-query-params';
+import { USER_ROLE } from 'src/databases/sample';
+import { Role, RoleDocument } from 'src/roles/schemas/role.schema';
 @Injectable()
 export class UsersService {
   constructor(
     @InjectModel(User.name) private userModel: SoftDeleteModel<UserDocument>,
+    @InjectModel(Role.name) private roleModel: SoftDeleteModel<RoleDocument>,
   ) {}
+
   async register(registerUserDto: RegisterUserDto) {
     const isExist = await this.userModel.findOne({
       email: registerUserDto.email,
@@ -23,11 +27,12 @@ export class UsersService {
         `Email ${registerUserDto.email} is already exits in system , Pls use another email`,
       );
     }
+    const userRole = await this.roleModel.findOne({ name: USER_ROLE });
     const hashPassword = this.getHashPassword(registerUserDto.password);
     let user = await this.userModel.create({
       ...registerUserDto,
       password: hashPassword,
-      role: 'USER',
+      role: userRole._id,
     });
     return {
       _id: user._id,
@@ -94,14 +99,18 @@ export class UsersService {
     }
 
     // Exclude the password field using `.select()`
-    const user = await this.userModel.findOne({ _id: id }).select('-password');
+    const user = (
+      await this.userModel.findOne({ _id: id }).select('-password')
+    ).populate({ path: 'role', select: { name: 1, _id: 1 } });
     return user;
   }
 
   findOneByUserName(username: string) {
-    return this.userModel.findOne({
-      email: username,
-    });
+    return this.userModel
+      .findOne({
+        email: username,
+      })
+      .populate({ path: 'role', select: { name: 1 } });
   }
 
   isValidPassword(password: string, hashPassword: string) {
@@ -124,8 +133,14 @@ export class UsersService {
   }
 
   async remove(id: string, user: IUser) {
+    //
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return 'Not Found User';
+    }
+    const foundUser = await this.userModel.findById(id);
+
+    if (foundUser && foundUser.email === 'admin@gmail.com') {
+      throw new BadRequestException('Cannot delete account admin@gmail.com');
     }
     await this.userModel.updateOne(
       { _id: id },
@@ -153,6 +168,9 @@ export class UsersService {
     );
   };
   findUserByToken = async (refreshToken: string) => {
-    return await this.userModel.findOne({ refreshToken });
+    return await this.userModel.findOne({ refreshToken }).populate({
+      path: 'role',
+      select: { name: 1 },
+    });
   };
 }

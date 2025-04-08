@@ -9,6 +9,7 @@ import { IUser } from 'src/users/users.interface';
 import { ConfigService } from '@nestjs/config';
 import ms from 'ms';
 import { response, Response } from 'express';
+import { RolesService } from 'src/roles/roles.service';
 
 @Injectable()
 export class AuthService {
@@ -16,6 +17,7 @@ export class AuthService {
     private usersService: UsersService,
     private jwtService: JwtService,
     private configService: ConfigService,
+    private roleService: RolesService,
     @InjectModel(User.name) private userModel: SoftDeleteModel<UserDocument>,
   ) {}
   // username / pass la 2 tham so thu vien passport no nem ve
@@ -24,7 +26,13 @@ export class AuthService {
     if (user) {
       const isValid = this.usersService.isValidPassword(pass, user.password);
       if (isValid === true) {
-        return user;
+        const userRole = user.role as unknown as { _id: string; name: string };
+        const temp = await this.roleService.findOne(userRole._id);
+        const objUser = {
+          ...user.toObject(),
+          permissions: temp?.permissions ?? [],
+        };
+        return objUser;
       }
     } else if (user && user.password === pass) {
       const { password, ...result } = user;
@@ -33,7 +41,7 @@ export class AuthService {
     return null;
   }
   async login(user: IUser, response: Response) {
-    const { _id, name, email, role } = user;
+    const { _id, name, email, role, permissions } = user;
     const payload = {
       sub: 'token login',
       iss: 'form server',
@@ -59,6 +67,7 @@ export class AuthService {
         name,
         email,
         role,
+        permissions: permissions,
       },
     };
   }
@@ -101,6 +110,9 @@ export class AuthService {
         // update user with refresh token
         await this.usersService.updateUserToken(refreshToken, _id.toString());
 
+        const userRole = user.role as unknown as { _id: string; name: string };
+        const temp = await this.roleService.findOne(userRole._id);
+
         // set refresh_token as cookies
         response.clearCookie('refresh_token');
         response.cookie('refresh_token', refreshToken, {
@@ -116,6 +128,7 @@ export class AuthService {
             name,
             email,
             role,
+            permissions: temp?.permissions ?? [],
           },
         };
       } else {

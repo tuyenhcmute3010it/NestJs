@@ -1,7 +1,9 @@
+import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsDefined,
   IsEmail,
+  IsMongoId,
   IsNotEmpty,
   IsNotEmptyObject,
   IsObject,
@@ -98,4 +100,28 @@ export class RegisterUserDto {
     message: 'Address Khong duoc de trong',
   })
   address: string;
+  @IsNotEmpty({
+    message: 'role Khong duoc de trong',
+  })
+  @IsMongoId({ message: 'role must mongo id type' })
+  role: string;
+
+  @IsNotEmptyObject()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => Company)
+  company: Company;
+}
+export class UserLoginDto {
+  @IsString()
+  @IsNotEmpty()
+  @ApiProperty({ example: 'mimicute', description: 'username' })
+  readonly username: string;
+  @IsString()
+  @IsNotEmpty()
+  @ApiProperty({
+    example: '123456',
+    description: 'password',
+  })
+  readonly password: string;
 }

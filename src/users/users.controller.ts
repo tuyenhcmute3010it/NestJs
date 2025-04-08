@@ -17,7 +17,9 @@ import { TestGuard } from './test.guard';
 import { ResponseMessage, User } from 'src/decorator/customize';
 import { IUser } from './users.interface';
 import { ShowUserDto } from './dto/show-user.dto';
+import { ApiTags } from '@nestjs/swagger';
 
+@ApiTags('users')
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
